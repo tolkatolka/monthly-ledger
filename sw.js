@@ -1,6 +1,7 @@
 // Monthly Ledger offline support: keeps the app's own files on the phone so it opens with no connection.
-const VERSION = 'ledger-v2';
-const APP = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
+const VERSION = 'ledger-v7';
+const APP = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png',
+  ...['spring','summer','fall','winter'].flatMap(x=>[`./icon-${x}-180.png`,`./icon-${x}-192.png`,`./icon-${x}-512.png`])];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(APP)).then(() => self.skipWaiting()));

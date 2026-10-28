@@ -18,7 +18,7 @@
 <style>
 *,*::before,*::after{box-sizing:border-box}
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-html{background:#1a2123;-webkit-text-size-adjust:100%}
+html{background:var(--bg);-webkit-text-size-adjust:100%}
 body{margin:0}
 [hidden]{display:none!important}
 input,select{font-size:16px}
@@ -192,13 +192,46 @@ h3.sub-head{font:600 .74rem var(--body);text-transform:uppercase;letter-spacing:
 .status{font-size:.78rem;color:var(--muted);text-align:center}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-weight:600;font-size:.88rem}
 @media (prefers-reduced-motion:no-preference){.meter i{transition:width .3s ease}}
+
+/* ---------- holiday themes ---------- */
+#fx{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:none}
+html[data-holiday] #fx{display:block}
+.wrap{position:relative;z-index:1}
+.toast{z-index:5}
+.brand{display:flex;flex-direction:column;gap:2px}
+.title-row{display:flex;align-items:center;gap:10px}
+html[data-tod="day"] #greeting{color:var(--accent)}
+#season-ico{width:30px;height:30px;border-radius:8px;flex:none;box-shadow:0 2px 8px rgb(0 0 0/.3)}
+#greeting{font:600 .72rem var(--body);text-transform:uppercase;letter-spacing:.12em;color:var(--save)}
+.theme-pick{display:flex;justify-content:center;align-items:center;gap:8px;font-size:.78rem;color:var(--muted)}
+.theme-pick select{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:4px 8px;font-size:.8rem;max-width:70vw}
+html[data-holiday] section.card, html[data-holiday] .hist, html[data-holiday] .subtotal, html[data-holiday] .setup-toggle{background:color-mix(in srgb,var(--surface) 90%,transparent)}
+html[data-holiday] .reset, html[data-holiday] .empty{background:color-mix(in srgb,var(--bg) 70%,transparent)}
+html[data-holiday] .statement{position:relative;background:var(--hero);color:var(--hero-ink);box-shadow:0 12px 32px -14px var(--hero-glow)}
+html[data-holiday] h1{color:var(--title)}
+
+/* December: a string of lights along the top of the statement card */
+html[data-holiday="winter"] .statement{margin-top:8px}
+html[data-holiday="winter"] .statement::before,
+html[data-holiday="winter"] .statement::after{content:"";position:absolute;left:14px;right:14px;top:-7px;height:14px;
+  background:
+    radial-gradient(circle at 50% 60%,#ff6f7d 3.4px,transparent 4.6px) 0 0/54px 14px repeat-x,
+    radial-gradient(circle at 50% 60%,#ffd56e 3.4px,transparent 4.6px) 18px 0/54px 14px repeat-x,
+    radial-gradient(circle at 50% 60%,#7fe3ad 3.4px,transparent 4.6px) 36px 0/54px 14px repeat-x}
+html[data-holiday="winter"] .statement::before{filter:drop-shadow(0 0 4px rgb(255 230 160/.9))}
+html[data-holiday="winter"] .statement::after{filter:brightness(1.5) blur(2px);opacity:0}
+@media (prefers-reduced-motion:no-preference){
+  html[data-holiday="winter"] .statement::after{animation:twinkle 2.6s steps(1) infinite}
+  @keyframes twinkle{0%{opacity:0}25%{opacity:.9}50%{opacity:.2}75%{opacity:.7}}
+}
 </style>
 
 </head>
 <body>
+<canvas id="fx" aria-hidden="true"></canvas>
 <div class="wrap">
   <header>
-    <h1>Monthly Ledger</h1>
+    <div class="brand"><span id="greeting" hidden></span><div class="title-row"><img id="season-ico" alt="" width="30" height="30"><h1>Monthly Ledger</h1></div></div>
     <div class="tabs" role="tablist">
       <button id="tab-month" role="tab" aria-selected="true">This month</button>
       <button id="tab-history" role="tab" aria-selected="false">History</button>
@@ -208,8 +241,587 @@ h3.sub-head{font:600 .74rem var(--body);text-transform:uppercase;letter-spacing:
   <main id="view-month"></main>
   <main id="view-history" hidden></main>
   <p class="status" id="status">Loading your ledger…</p>
+  <div class="theme-pick"><label for="theme-sel">Theme</label><select id="theme-sel"><option value="auto">Automatic (holidays)</option><option value="default">Everyday</option><option value="autumn">Harvest (Thanksgiving)</option><option value="winter">Snowy night (December)</option></select></div>
 </div>
 <div class="toast" id="toast" hidden></div>
+<script>
+/* seasonal app icon: shown beside the title, and used for the browser and Home Screen icon */
+(function(){
+  const ICONS={"spring": "data:image/png;base64,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", "summer": "data:image/png;base64,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", "fall": "data:image/png;base64,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", "winter": "data:image/png;base64,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"};
+  const m=new Date().getMonth(), s = (m===11||m<2)?'winter' : m<5?'spring' : m<8?'summer' : 'fall';
+  const img=document.getElementById('season-ico'); if(img){ img.src=ICONS[s]; img.title=s[0].toUpperCase()+s.slice(1); }
+  document.querySelectorAll('link[rel="apple-touch-icon"]').forEach(l=>l.href='icon-'+s+'-180.png');
+  document.querySelectorAll('link[rel="icon"]').forEach(l=>l.href='icon-'+s+'-192.png');
+})();
+</script>
+<script>
+/* ---------- holiday themes: palette, scene and animated background ---------- */
+(function(){
+  const root=document.documentElement, cv=document.getElementById('fx'), ctx=cv.getContext('2d');
+  const sel=document.getElementById('theme-sel'), greet=document.getElementById('greeting');
+  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)');
+  const rnd=(a,b)=>a+Math.random()*(b-a), TAU=Math.PI*2, pick=a=>a[(Math.random()*a.length)|0];
+  const MAPLE=[[0,-1],[.12,-.62],[.38,-.75],[.3,-.35],[.75,-.45],[.62,-.18],[.95,0],[.5,.12],[.58,.38],[.12,.25],[.05,.55],[0,.45],[-.05,.55],[-.12,.25],[-.58,.38],[-.5,.12],[-.95,0],[-.62,-.18],[-.75,-.45],[-.3,-.35],[-.38,-.75],[-.12,-.62]];
+
+  /* ===== the themes ===== */
+  const T={
+    newyear:{label:"New Year’s", greet:'Happy New Year',
+      pal:{bg:'#0b0a14',surface:'#17152a',raised:'#201d38',ink:'#f5f0e6',muted:'#a9a3c0',line:'#2e2a4d',accent:'#f2c14e',accentInk:'#0b0a14',accentSoft:'#3a3358',save:'#f2c14e',good:'#9ee6b8',bad:'#ff8a8a',
+        hero:'linear-gradient(135deg,#2b2350,#4b3a7a 60%,#c99a2e)',heroInk:'#fff8e6',heroGlow:'rgb(242 193 78/.45)',title:'#f8e7b8'},
+      sky:['#05040c','#120f26','#231a44'], stars:1, city:'#07060f',
+      parts:[{k:'confetti',div:26000,max:24,c:['#f2c14e','#e6e6f0','#b48cff','#ff9ec4']}],
+      events:[{k:'fireworks',every:[2.4,4.6],c:['#f2c14e','#ffffff','#b48cff','#7fd8ff','#ff8fb6']}]},
+    mlk:{label:'Martin Luther King Jr. Day', greet:'Honoring Dr. King',
+      pal:{bg:'#14121c',surface:'#1f1b2b',raised:'#272236',ink:'#f2ece4',muted:'#b0a8b8',line:'#383047',accent:'#e9b85d',accentInk:'#14121c',accentSoft:'#4a3a2a',save:'#f4cf86',good:'#a8dcb6',bad:'#ff958a',
+        hero:'linear-gradient(135deg,#3a2c58,#6a4a6a 55%,#d99a55)',heroInk:'#fff6ea',heroGlow:'rgb(233 184 93/.4)',title:'#f6dcb0'},
+      sky:['#14112a','#3a2a52','#93535a','#e8a35c'], body:{t:'sun',x:.5,y:.86,r:.11,c:'#ffd590'},
+      hills:[{c:'#2a1d2c',b:.08,a:14,f:.007}],
+      parts:[{k:'mote',div:14000,max:40,c:['#ffd590','#fff0cf']}],
+      events:[{k:'rays',every:[10,16]}]},
+    lunar:{label:'Lunar New Year', greet:'Happy Lunar New Year',
+      pal:{bg:'#1a0b0b',surface:'#2a1212',raised:'#351717',ink:'#fbe9d0',muted:'#c9a28a',line:'#4e2020',accent:'#efb64a',accentInk:'#1a0b0b',accentSoft:'#5a2a1a',save:'#f2c14e',good:'#b9d98a',bad:'#ff8a7a',
+        hero:'linear-gradient(135deg,#9e1b1b,#c8312a 55%,#e0a13a)',heroInk:'#fff3dc',heroGlow:'rgb(200 49 42/.55)',title:'#f8d27a'},
+      sky:['#12060a','#2a0d12','#4a1515'], stars:1, body:{t:'moon',x:.8,y:.14,r:.07,c:'#f7d48a'},
+      hills:[{c:'#24090c',b:.06,a:10,f:.008}],
+      parts:[{k:'lantern',div:52000,max:12,c:['#d7261e','#e33b22']},{k:'mote',div:30000,max:16,c:['#ffcf6a']}],
+      events:[{k:'fireworks',every:[3.6,6.5],c:['#ffcf4a','#ff4a3a','#ffe8a0']},{k:'lanterns',every:[16,24]}]},
+    valentine:{label:"Valentine’s Day", greet:'Happy Valentine’s Day',
+      pal:{bg:'#1c0f17',surface:'#2a1622',raised:'#33192a',ink:'#fbe7ef',muted:'#c9a1b4',line:'#4a2638',accent:'#ff7aa8',accentInk:'#1c0f17',accentSoft:'#5a2440',save:'#ffc2d6',good:'#a6e3c4',bad:'#ff8f8f',
+        hero:'linear-gradient(135deg,#b3245a,#e0457b 55%,#ff8fb1)',heroInk:'#fff1f6',heroGlow:'rgb(255 122 168/.5)',title:'#ffc8da'},
+      sky:['#14080f','#2c0f22','#4a1631'], stars:1,
+      parts:[{k:'heart',div:15000,max:34,c:['#ff4f7e','#ff7aa8','#ffb3c9','#e0245e']}],
+      events:[{k:'heartburst',every:[5,9]}]},
+    presidents:{label:"Presidents’ Day", greet:'Happy Presidents’ Day',
+      pal:{bg:'#0e1424',surface:'#172038',raised:'#1e2944',ink:'#eef1f7',muted:'#a3adc6',line:'#2a3655',accent:'#e8766b',accentInk:'#0e1424',accentSoft:'#4a2a38',save:'#f2d38a',good:'#9fe0b8',bad:'#ff8f8f',
+        hero:'linear-gradient(135deg,#1d2f5c,#2c4a8a 55%,#b8363a)',heroInk:'#ffffff',heroGlow:'rgb(80 120 210/.45)',title:'#f2f4fa'},
+      sky:['#070b16','#111c36','#1f2f55'], stars:1,
+      hills:[{c:'#0c1326',b:.05,a:8,f:.006}],
+      parts:[{k:'star',div:20000,max:30,c:['#e8505a','#f2f4fa','#5b8cff']}],
+      events:[{k:'sweep',every:[10,16]}]},
+    stpatrick:{label:"St. Patrick’s Day", greet:'Happy St. Patrick’s Day',
+      pal:{bg:'#0d1a12',surface:'#15271c',raised:'#1b3123',ink:'#eaf6ec',muted:'#9fbea8',line:'#24412f',accent:'#5fd18a',accentInk:'#0d1a12',accentSoft:'#1f4a31',save:'#f2cf5b',good:'#9fe6b0',bad:'#ff9a8a',
+        hero:'linear-gradient(135deg,#167a43,#2da35e 55%,#d9b23a)',heroInk:'#f3fff6',heroGlow:'rgb(95 209 138/.45)',title:'#bff2cf'},
+      sky:['#0a1a12','#16362a','#2f5a44'], body:{t:'sun',x:.78,y:.16,r:.06,c:'#fff2b0'},
+      hills:[{c:'#1f5a36',b:.12,a:22,f:.006},{c:'#123d24',b:.05,a:14,f:.01}],
+      parts:[{k:'shamrock',div:17000,max:30,c:['#3fbf6a','#2e9e54','#7fdc95']}],
+      events:[{k:'rainbow',every:[12,18]}]},
+    easter:{label:'Easter', greet:'Happy Easter',
+      pal:{bg:'#161a26',surface:'#20263a',raised:'#283048',ink:'#f3f0fa',muted:'#b3b3cc',line:'#313a55',accent:'#bba5ff',accentInk:'#161a26',accentSoft:'#3b3566',save:'#ffe08a',good:'#a8e8c0',bad:'#ff9fb0',
+        hero:'linear-gradient(135deg,#7f6bd6,#c48ad8 50%,#ffc59e)',heroInk:'#1d1636',heroGlow:'rgb(196 138 216/.45)',title:'#e6dcff'},
+      sky:['#1b1f3a','#3d3f70','#c9869f','#ffcf9e'], body:{t:'sun',x:.25,y:.8,r:.09,c:'#fff0c2'},
+      hills:[{c:'#3d6b55',b:.11,a:16,f:.007},{c:'#2a4f3d',b:.05,a:12,f:.011}],
+      parts:[{k:'petal',div:16000,max:34,c:['#ffc4d8','#fff1a8','#d5c4ff','#bff0d6']}],
+      events:[{k:'butterflies',every:[7,12]}]},
+    mother:{label:"Mother’s Day", greet:'Happy Mother’s Day',
+      pal:{bg:'#1d1418',surface:'#2a1d23',raised:'#33232a',ink:'#fbeef0',muted:'#c9a9b2',line:'#47303a',accent:'#f49ab4',accentInk:'#1d1418',accentSoft:'#5a3442',save:'#ffd59a',good:'#b2e3bf',bad:'#ff8f8f',
+        hero:'linear-gradient(135deg,#c25b7d,#e389a3 55%,#f6c19b)',heroInk:'#2a1018',heroGlow:'rgb(244 154 180/.45)',title:'#ffd3df'},
+      sky:['#1a1018','#3a1d2c','#7a3b52','#c9706a'], body:{t:'sun',x:.7,y:.84,r:.08,c:'#ffd0a8'},
+      hills:[{c:'#3a2230',b:.07,a:12,f:.008}],
+      parts:[{k:'petal',div:14000,max:38,c:['#ffb3c7','#ff8fb0','#ffe3ea','#ffd0a8']}],
+      events:[{k:'gust',every:[14,22]},{k:'butterflies',every:[11,17]}]},
+    memorial:{label:'Memorial Day', greet:'Remembering the fallen',
+      pal:{bg:'#0f1320',surface:'#181e30',raised:'#1f263b',ink:'#eceff5',muted:'#a2abc0',line:'#2a3350',accent:'#e0645f',accentInk:'#0f1320',accentSoft:'#3a2a3a',save:'#e8d9a8',good:'#a9d9b8',bad:'#ff9a8a',
+        hero:'linear-gradient(135deg,#1c2848,#2c3c66 60%,#7a2a30)',heroInk:'#f4f6fb',heroGlow:'rgb(60 80 140/.5)',title:'#eef1f8'},
+      sky:['#070a14','#121a30','#2a2f4a','#5a3a3a'], stars:1,
+      hills:[{c:'#0d1120',b:.06,a:10,f:.007}],
+      parts:[{k:'poppy',div:30000,max:16,c:['#c8262c','#d9363a']}],
+      events:[{k:'sweep',every:[16,24]}]},
+    juneteenth:{label:'Juneteenth', greet:'Happy Juneteenth',
+      pal:{bg:'#140f0c',surface:'#221a14',raised:'#2b2119',ink:'#fbf0e2',muted:'#c4ad94',line:'#43342a',accent:'#f2b53a',accentInk:'#140f0c',accentSoft:'#4a3a1c',save:'#f2b53a',good:'#7fd39a',bad:'#ff7d6e',
+        hero:'linear-gradient(135deg,#b3261e,#d9822b 50%,#2e8b57)',heroInk:'#fff8ec',heroGlow:'rgb(242 181 58/.45)',title:'#f8d98a'},
+      sky:['#0c0a10','#1e1420','#3a1e1a'], stars:1,
+      hills:[{c:'#120c0e',b:.05,a:10,f:.008}],
+      parts:[{k:'star',div:22000,max:26,c:['#e0362c','#f2b53a','#2e9e5a']}],
+      events:[{k:'fireworks',every:[3.4,6],c:['#ff4a3a','#f2b53a','#3fcf7a','#ffffff']}]},
+    father:{label:"Father’s Day", greet:'Happy Father’s Day',
+      pal:{bg:'#0e171c',surface:'#16232b',raised:'#1c2c36',ink:'#e9f2f5',muted:'#9fb5bf',line:'#26404b',accent:'#6ec1d6',accentInk:'#0e171c',accentSoft:'#1f4250',save:'#f2c879',good:'#9fe0b8',bad:'#ff9a8a',
+        hero:'linear-gradient(135deg,#1f4f63,#2f7a8f 55%,#d89b4a)',heroInk:'#f2fbff',heroGlow:'rgb(110 193 214/.4)',title:'#cdeef6'},
+      sky:['#0b1a24','#173a4c','#3f6f7a','#d99a5a'], body:{t:'sun',x:.2,y:.82,r:.08,c:'#ffd99a'},
+      hills:[{c:'#1c3a3a',b:.2,a:14,f:.007},{c:'#11282a',b:.16,a:10,f:.011}],
+      lake:{h:.17,top:'#2e5a66',bottom:'#0f2630',glint:'#ffd99a'}, boat:1,
+      parts:[{k:'seed',div:26000,max:20,c:['#f4f1e6']}],
+      events:[{k:'fishjump',every:[4,8]},{k:'planes',every:[9,15]}]},
+    july4:{label:'Fourth of July', greet:'Happy Fourth of July',
+      pal:{bg:'#0b1020',surface:'#141c34',raised:'#1b2440',ink:'#f2f4fa',muted:'#a6b0c8',line:'#283456',accent:'#ff6b6b',accentInk:'#0b1020',accentSoft:'#4a2232',save:'#8fb8ff',good:'#9fe6b8',bad:'#ff8f8f',
+        hero:'linear-gradient(135deg,#1c3a8a,#2f55b8 50%,#d63a3a)',heroInk:'#ffffff',heroGlow:'rgb(214 58 58/.45)',title:'#ffffff'},
+      sky:['#04060f','#0c1430','#1a2650'], stars:1, city:'#060913',
+      parts:[{k:'star',div:34000,max:14,c:['#ff4a4a','#ffffff','#4a7dff']}],
+      events:[{k:'fireworks',every:[1.4,3],c:['#ff4a4a','#ffffff','#4a7dff','#ffd84a']}]},
+    labor:{label:'Labor Day', greet:'Happy Labor Day',
+      pal:{bg:'#18120f',surface:'#251c17',raised:'#2e231c',ink:'#f7ece1',muted:'#bea896',line:'#433328',accent:'#f29d4b',accentInk:'#18120f',accentSoft:'#553521',save:'#ffd27a',good:'#b8dc8a',bad:'#ff8a7a',
+        hero:'linear-gradient(135deg,#c2502a,#e57d35 55%,#f2c14e)',heroInk:'#1d120c',heroGlow:'rgb(242 157 75/.5)',title:'#ffd9ad'},
+      sky:['#1a1428','#4a2a3e','#b5523a','#f2a24a'], body:{t:'sun',x:.62,y:.85,r:.1,c:'#ffd27a'},
+      hills:[{c:'#2a1a18',b:.08,a:14,f:.007},{c:'#1a100e',b:.035,a:9,f:.012}],
+      parts:[{k:'firefly',div:16000,max:30,c:['#f6ff9a','#ffe27a']}],
+      events:[{k:'rays',every:[12,18]}]},
+    halloween:{label:'Halloween', greet:'Happy Halloween',
+      pal:{bg:'#120d16',surface:'#1d1524',raised:'#261c30',ink:'#f3e9f7',muted:'#b4a2c0',line:'#3a2b47',accent:'#ff8a1f',accentInk:'#120d16',accentSoft:'#4a2d1a',save:'#b98aff',good:'#9ee68a',bad:'#ff6b6b',
+        hero:'linear-gradient(135deg,#3a1d55,#6a2f8a 50%,#ff7a1a)',heroInk:'#fff4e8',heroGlow:'rgb(255 122 26/.45)',title:'#ffb06a'},
+      sky:['#07040b','#1a0f24','#2c1636'], stars:1, body:{t:'moon',x:.75,y:.17,r:.11,c:'#f1edc4'}, fog:1,
+      hills:[{c:'#110a16',b:.07,a:16,f:.008}],
+      parts:[{k:'bat',div:120000,max:4,c:['#0a060d']},{k:'leaf',div:40000,max:12,c:['#ff7a1a','#b8321f','#7a3cff']}],
+      events:[{k:'lightning',every:[11,17]}]},
+    veterans:{label:'Veterans Day', greet:'Thank you, veterans',
+      pal:{bg:'#10141a',surface:'#1a2029',raised:'#212833',ink:'#eef0f2',muted:'#a7b0ba',line:'#2d3644',accent:'#d9b24e',accentInk:'#10141a',accentSoft:'#3d3a26',save:'#d9b24e',good:'#a6d6b4',bad:'#ff9a8a',
+        hero:'linear-gradient(135deg,#25365c,#3a4f7a 55%,#9a2f35)',heroInk:'#ffffff',heroGlow:'rgb(217 178 78/.35)',title:'#f1e3b8'},
+      sky:['#0a0d14','#18202e','#34364a','#6a4a3a'], stars:1,
+      hills:[{c:'#12151c',b:.06,a:10,f:.007}],
+      parts:[{k:'poppy',div:26000,max:18,c:['#c8262c','#d9363a']},{k:'leaf',div:50000,max:8,c:['#8a4b1c','#b8701c']}],
+      events:[{k:'sweep',every:[14,20]}]},
+    autumn:{label:'Thanksgiving', greet:'Happy Thanksgiving',
+      pal:{bg:'#1c1410',surface:'#2a1e17',raised:'#35261c',ink:'#f4e6d3',muted:'#b9a08a',line:'#4a3627',accent:'#e08a3c',accentInk:'#1c1410',accentSoft:'#5b3a22',save:'#f0c674',saveSoft:'#4d3a20',good:'#c2d27e',bad:'#ec7a63',
+        hero:'linear-gradient(135deg,#b4531c 0%,#d9772c 55%,#e9a447 100%)',heroInk:'#1c1410',heroGlow:'rgb(217 119 44/.55)',title:'#f6dcb4'},
+      sky:['#1a1220','#2a1a1c','#4a2614','#6b3410'], body:{t:'moon',x:.82,y:.16,r:.07,c:'#f6c27e'}, mist:1,
+      hills:[{c:'#3a2013',b:.13,a:18,f:.006},{c:'#24140c',b:.06,a:14,f:.009}],
+      parts:[{k:'leaf',div:16000,max:46,c:['#c2410c','#dc6b1f','#e89a2c','#b8321f','#8a4b1c','#d9a441']}],
+      events:[{k:'gust',every:[18,28]}]},
+    winter:{label:'December', greet:'Happy holidays',
+      pal:{bg:'#0a1222',surface:'#121d33',raised:'#1a2742',ink:'#e9f0fb',muted:'#9db0cc',line:'#283a58',accent:'#a9d1ff',accentInk:'#0a1222',accentSoft:'#233a61',save:'#f5d892',saveSoft:'#3a3624',good:'#9fe5c6',bad:'#ff9db0',
+        hero:'linear-gradient(160deg,#1e3a6e 0%,#2f5596 60%,#4a74b8 100%)',heroInk:'#f2f7ff',heroGlow:'rgb(120 170 255/.5)',title:'#f2f7ff'},
+      sky:['#03060f','#0a1530','#16274a'], stars:1, body:{t:'crescent',x:.18,y:.12,r:.035,c:'#eef4ff'},
+      hills:[{c:'#b9c8e2',b:.1,a:16,f:.007,lights:4},{c:'#e6eef9',b:.045,a:10,f:.011}],
+      parts:[{k:'snow',div:5200,max:170,c:['#f4f8ff']}],
+      events:[{k:'shoot',every:[11,20]},{k:'aurora',every:[40,55]}]}
+  };
+  const ORDER=['newyear','mlk','lunar','valentine','presidents','stpatrick','easter','mother','memorial','juneteenth','father','july4','labor','halloween','veterans','autumn','winter'];
+  T.winter.label='Christmas (December)';
+
+  /* ===== seasons: used whenever no holiday week is on ===== */
+  Object.assign(T,{
+    spring:{label:'Spring', season:1,
+      pal:{bg:'#121a17',surface:'#1b2622',raised:'#22302a',ink:'#eef5ee',muted:'#a8bcae',line:'#2c3d35',accent:'#f29ab8',accentInk:'#121a17',accentSoft:'#4a2e3c',save:'#9fe0a8',good:'#9fe0a8',bad:'#ff8f8f',
+        hero:'linear-gradient(135deg,#2f7a55,#5aa676 50%,#f29ab8)',heroInk:'#0f1a14',heroGlow:'rgb(242 154 184/.4)',title:'#d9f2df'},
+      sky:['#0b1220','#16243a','#28405a'], stars:1, body:{t:'moon',x:.8,y:.14,r:.06,c:'#f2f4ff'},
+      hills:[{c:'#1f3a2c',b:.1,a:16,f:.007},{c:'#142a1f',b:.045,a:11,f:.011}],
+      parts:[{k:'petal',div:18000,max:30,c:['#ffc4d8','#ffffff','#ffd9e6']}],
+      events:[{k:'shower',every:[22,34]},{k:'shoot',every:[16,26]}],
+      day:{sky:['#8ec9f0','#c4e5f8','#eaf7ef'], body:{t:'sun',x:.78,y:.13,r:.06,c:'#fff3c4'},
+        hills:[{c:'#6fae72',b:.1,a:16,f:.007},{c:'#4f9258',b:.045,a:11,f:.011}],
+        events:[{k:'butterflies',every:[8,13]},{k:'shower',every:[24,36]}]}},
+    summer:{label:'Summer', season:1,
+      pal:{bg:'#0d1820',surface:'#15232d',raised:'#1b2c38',ink:'#eaf4f8',muted:'#9fb8c4',line:'#25404e',accent:'#ffc24a',accentInk:'#0d1820',accentSoft:'#4a3a1a',save:'#7fd6e8',good:'#9fe6b0',bad:'#ff8f80',
+        hero:'linear-gradient(135deg,#1f7a9a,#33a3b8 50%,#ffc24a)',heroInk:'#08161c',heroGlow:'rgb(255 194 74/.4)',title:'#d4f1fa'},
+      sky:['#050b18','#0c1a33','#16314d'], stars:1, body:{t:'moon',x:.2,y:.14,r:.06,c:'#f6f0d8'},
+      lake:{h:.2,top:'#123048',bottom:'#06141f',glint:'#f6f0d8'},
+      parts:[{k:'firefly',div:15000,max:32,c:['#f6ff9a','#ffe27a']}],
+      events:[{k:'shoot',every:[9,16]}],
+      day:{sky:['#3fa0e6','#8fd0f5','#e8f8ff'], body:{t:'sun',x:.78,y:.12,r:.07,c:'#fff1a8'}, clouds:4,
+        lake:{h:.2,top:'#2a9fc8',bottom:'#13607e',glint:'#ffffff'},
+        parts:[{k:'seed',div:30000,max:14,c:['#ffffff']}], events:[{k:'birds',every:[8,14]}]}},
+    fall:{label:'Fall', season:1,
+      pal:{bg:'#1a140f',surface:'#271e16',raised:'#30251b',ink:'#f3e7d6',muted:'#b8a28b',line:'#463526',accent:'#e9a23b',accentInk:'#1a140f',accentSoft:'#56391c',save:'#f0c674',good:'#c2d27e',bad:'#ec7a63',
+        hero:'linear-gradient(135deg,#8a3b1a,#c2662a 55%,#e9a23b)',heroInk:'#fff4e4',heroGlow:'rgb(233 162 59/.45)',title:'#f6dcb4'},
+      sky:['#0d0b14','#1d1520','#3a2418'], stars:1, body:{t:'moon',x:.78,y:.15,r:.065,c:'#f4dca8'},
+      hills:[{c:'#2a1810',b:.11,a:16,f:.007},{c:'#1a0f0a',b:.05,a:12,f:.01}],
+      parts:[{k:'leaf',div:20000,max:36,c:['#c2410c','#dc6b1f','#e89a2c','#b8321f','#d9a441']}],
+      events:[{k:'gust',every:[20,30]},{k:'shoot',every:[14,24]}],
+      day:{sky:['#7fb0d8','#bcd4e2','#f2d9b0'], body:{t:'sun',x:.22,y:.15,r:.06,c:'#fff0c8'},
+        hills:[{c:'#b0622a',b:.11,a:16,f:.007},{c:'#7a3f1a',b:.05,a:12,f:.01}],
+        events:[{k:'gust',every:[16,26]},{k:'birds',every:[10,16]}]}},
+    wintry:{label:'Winter', season:1,
+      pal:{bg:'#0d1420',surface:'#152031',raised:'#1c2a3f',ink:'#eaf1fa',muted:'#9fb1c8',line:'#283a54',accent:'#8fc4f2',accentInk:'#0d1420',accentSoft:'#223a58',save:'#cfe6ff',good:'#9fe5c6',bad:'#ff9db0',
+        hero:'linear-gradient(160deg,#25406a,#3b6296 60%,#8fb6dc)',heroInk:'#f2f7ff',heroGlow:'rgb(143 196 242/.4)',title:'#eef5ff'},
+      sky:['#04070f','#0b1630','#182a48'], stars:1, body:{t:'moon',x:.8,y:.13,r:.05,c:'#eef4ff'},
+      hills:[{c:'#a9bad6',b:.11,a:16,f:.007,pines:'#0f1f2c'},{c:'#dbe5f3',b:.05,a:10,f:.011}],
+      parts:[{k:'snow',div:6500,max:140,c:['#f4f8ff']}],
+      events:[{k:'aurora',every:[30,45]},{k:'shoot',every:[12,20]}],
+      day:{sky:['#8fb2d6','#b9cfe6','#e3ecf6'], body:{t:'sun',x:.25,y:.16,r:.055,c:'#fffbe8'}, clouds:2,
+        hills:[{c:'#eef3fa',b:.11,a:16,f:.007,pines:'#3d5f52'},{c:'#ffffff',b:.05,a:10,f:.011}],
+        events:[{k:'sweep',every:[12,18]},{k:'birds',every:[14,22]}]}}
+  });
+  const SEASONS=['spring','summer','fall','wintry'];
+
+  /* ===== daytime looks for the holidays (night is the default look above) ===== */
+  const DAY={
+    newyear:{sky:['#6d8fd6','#a9c2ee','#e9eefb'], body:{t:'sun',x:.8,y:.15,r:.05,c:'#fff6dc'}, city:'#5a6688', clouds:2},
+    mlk:{sky:['#7fa6d9','#bcd3ee','#f5e2c4'], body:{t:'sun',x:.5,y:.22,r:.07,c:'#fff0c2'}, parts:[{k:'seed',div:24000,max:18,c:['#ffffff']}], events:[{k:'rays',every:[10,16]},{k:'birds',every:[12,18]}]},
+    lunar:{sky:['#d9573f','#f0a35a','#f8d9a0'], body:{t:'sun',x:.78,y:.16,r:.06,c:'#fff2c8'}, clouds:0},
+    valentine:{sky:['#f29bb8','#f8c6d6','#fde8ee'], body:{t:'sun',x:.2,y:.15,r:.05,c:'#fff4f6'}},
+    presidents:{sky:['#5b7fc4','#9db6e2','#e6eefa'], body:{t:'sun',x:.78,y:.15,r:.05,c:'#fffbe6'}},
+    stpatrick:{sky:['#6fb6e8','#a8d8f2','#e6f6ff'], body:{t:'sun',x:.78,y:.14,r:.06,c:'#fff6c4'}, hills:[{c:'#4fa85e',b:.12,a:22,f:.006},{c:'#2f8a45',b:.05,a:14,f:.01}]},
+    easter:{sky:['#9fd0f2','#cfe8f8','#fff3e0'], body:{t:'sun',x:.25,y:.15,r:.06,c:'#fff6d0'}, hills:[{c:'#7cc08e',b:.11,a:16,f:.007},{c:'#5aa872',b:.05,a:12,f:.011}]},
+    mother:{sky:['#f6b8c8','#fbd8e0','#fff1e6'], body:{t:'sun',x:.7,y:.15,r:.06,c:'#fff4e6'}},
+    memorial:{sky:['#7d97c2','#b3c4e0','#e9eef6'], body:{t:'sun',x:.75,y:.16,r:.05,c:'#fffbe8'}, clouds:2},
+    juneteenth:{sky:['#f2a35a','#f7c98a','#fdebc8'], body:{t:'sun',x:.78,y:.16,r:.06,c:'#fff6dc'}, clouds:2},
+    father:{sky:['#6fb4d9','#a9d6ec','#e8f5fb'], body:{t:'sun',x:.22,y:.14,r:.06,c:'#fff3c4'}, clouds:3,
+      hills:[{c:'#4f8a6a',b:.2,a:14,f:.007},{c:'#3a7055',b:.16,a:10,f:.011}], lake:{h:.17,top:'#3f8fae',bottom:'#1d5368',glint:'#ffffff'}},
+    july4:{sky:['#3f7fd6','#8cbcf0','#e4f0fd'], body:{t:'sun',x:.2,y:.13,r:.06,c:'#fff6c8'}, city:'#4f5a78', clouds:3},
+    labor:{sky:['#5aa6dc','#9ccbea','#f3e6c8'], body:{t:'sun',x:.7,y:.14,r:.06,c:'#fff3c4'}, parts:[{k:'seed',div:26000,max:18,c:['#ffffff']}], events:[{k:'birds',every:[9,15]},{k:'rays',every:[14,20]}]},
+    halloween:{sky:['#6a5a8a','#b08a8a','#f0a86a'], body:{t:'sun',x:.75,y:.2,r:.07,c:'#ffe2b0'}, fog:1, clouds:3},
+    veterans:{sky:['#8a9ab0','#bcc6d2','#e8ebef'], body:{t:'sun',x:.25,y:.18,r:.05,c:'#fffaea'}, clouds:4},
+    autumn:{sky:['#e8a35a','#f2c88a','#fbe8c8'], body:{t:'sun',x:.82,y:.16,r:.07,c:'#fff3d6'}, hills:[{c:'#a85a26',b:.13,a:18,f:.006},{c:'#7a3e18',b:.06,a:14,f:.009}], mist:0},
+    winter:{sky:['#9cc3ea','#cfe2f5','#f2f7fd'], body:{t:'sun',x:.18,y:.14,r:.05,c:'#fffbe8'}, clouds:2,
+      hills:[{c:'#e4ecf8',b:.1,a:16,f:.007,lights:0,pines:'#3d5f52'},{c:'#ffffff',b:.045,a:10,f:.011}], events:[{k:'sweep',every:[12,18]},{k:'birds',every:[14,22]}]}
+  };
+  Object.keys(DAY).forEach(k=>{ T[k].day=DAY[k]; });
+
+  /* ===== colors: mixing, contrast, and the light (daytime) version of any palette ===== */
+  const hex=c=>{ c=c.replace('#',''); if(c.length===3) c=c.split('').map(x=>x+x).join(''); return [0,2,4].map(i=>parseInt(c.slice(i,i+2),16)); };
+  const toHex=a=>'#'+a.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('');
+  const mix=(a,b,t)=>{ const A=hex(a),B=hex(b); return toHex(A.map((v,i)=>v+(B[i]-v)*t)); };
+  const lum=c=>{ const v=hex(c).map(x=>{ x/=255; return x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4); }); return .2126*v[0]+.7152*v[1]+.0722*v[2]; };
+  const contrast=(a,b)=>{ const x=lum(a),y=lum(b); return (Math.max(x,y)+.05)/(Math.min(x,y)+.05); };
+  const readableOn=(c,bg,min)=>{ let out=c; for(let t=0;t<=1 && contrast(out,bg)<min;t+=.05) out=mix(c,'#000000',t); return out; };
+  function lightPal(p){
+    const A=p.accent, bg=mix('#f7f5f2',A,.1), surface=mix('#ffffff',A,.04), ink=mix(p.bg,'#000000',.25);
+    return Object.assign({},p,{ bg, surface, raised:mix('#ffffff',A,.09), ink, muted:mix(ink,'#ffffff',.42), line:mix('#ffffff',A,.24),
+      accent:readableOn(A,'#ffffff',4.6), accentInk:'#ffffff', accentSoft:mix('#ffffff',A,.22),
+      save:readableOn(p.save,surface,4.5), saveSoft:mix('#ffffff',p.save,.25), warn:readableOn(p.warn||'#f2b05a',surface,4.5),
+      bad:readableOn(p.bad,surface,4.5), badSoft:mix('#ffffff',p.bad,.18), good:readableOn(p.good,surface,4.5), track:mix('#ffffff',A,.16),
+      title:ink, scheme:'light' });
+  }
+  const BASE={bg:'#1a2123',surface:'#232b2e',raised:'#2c3438',ink:'#e5d3ce',muted:'#a39fa8',line:'#3a3f4c',accent:'#c0adb5',accentInk:'#1a2123',accentSoft:'#444556',save:'#e5d3ce',saveSoft:'#444556',warn:'#dcae84',bad:'#e8949a',badSoft:'#43303a',good:'#a8cbb6',track:'#343b45'};
+  function buildScene(t,night){
+    if(!t) return null;
+    if(night || !t.day) return Object.assign({},t,{night:true});
+    const d=t.day, s=Object.assign({},t,{stars:0,clouds:3,night:false,mist:0},d);
+    if(!d.hills && t.hills){ const end=s.sky[s.sky.length-1]; s.hills=t.hills.map(h=>Object.assign({},h,{c:mix(h.c,end,.3),lights:0})); }
+    return s;
+  }
+
+  /* ===== when each theme runs: the Monday-to-Sunday week that contains the holiday ===== */
+  const LUNAR={2024:[2,10],2025:[1,29],2026:[2,17],2027:[2,6],2028:[1,26],2029:[2,13],2030:[2,3],2031:[1,23],2032:[2,11],2033:[1,31],2034:[2,19],2035:[2,8],2036:[1,28],2037:[2,15],2038:[2,4],2039:[1,24],2040:[2,12],2041:[2,1],2042:[1,22],2043:[2,10],2044:[1,30],2045:[2,17]};
+  const nth=(y,m,wd,n)=>new Date(y,m,1+((wd-new Date(y,m,1).getDay()+7)%7)+7*(n-1));
+  const lastWd=(y,m,wd)=>{ const d=new Date(y,m+1,0); d.setDate(d.getDate()-((d.getDay()-wd+7)%7)); return d; };
+  function easter(y){ const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),
+    h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),n=h+l-7*m+114;
+    return new Date(y,Math.floor(n/31)-1,(n%31)+1); }
+  function inWeek(now,day){ const s=new Date(day.getFullYear(),day.getMonth(),day.getDate()-((day.getDay()+6)%7)); const e=new Date(s.getFullYear(),s.getMonth(),s.getDate()+7); return now>=s && now<e; }
+  function autoTheme(now){
+    const y=now.getFullYear(), lny=LUNAR[y];
+    const list=[['newyear',new Date(y,0,1)],['newyear',new Date(y+1,0,1)],['lunar',lny&&new Date(y,lny[0]-1,lny[1])],
+      ['valentine',new Date(y,1,14)],['mlk',nth(y,0,1,3)],['presidents',nth(y,1,1,3)],['easter',easter(y)],['stpatrick',new Date(y,2,17)],
+      ['mother',nth(y,4,0,2)],['memorial',lastWd(y,4,1)],['father',nth(y,5,0,3)],['juneteenth',new Date(y,5,19)],['july4',new Date(y,6,4)],
+      ['labor',nth(y,8,1,1)],['halloween',new Date(y,9,31)],['veterans',new Date(y,10,11)],['autumn',nth(y,10,4,4)]];
+    for(const [k,d] of list) if(d && inWeek(now,d)) return k;
+    const m=now.getMonth(); return m===11 ? 'winter' : m<2 ? 'wintry' : m<5 ? 'spring' : m<8 ? 'summer' : 'fall';
+  }
+
+  /* ===== particles ===== */
+  let W=0,H=0,dpr=1,theme=null,sc=null,raf=0,last=0,clock=0,wind=0;
+  let parts=[],stars=[],hills=[],city=[],events=[],live=[],clouds=[];
+  const KIND={
+    leaf:{m:'fall',w:1,i:p=>({s:rnd(7,15),vy:rnd(22,48),sway:rnd(14,34),maple:Math.random()<.55})},
+    snow:{m:'fall',w:.25,i:p=>({r:.7+p.z*2.6,vy:14+p.z*46,sway:rnd(6,20)*(.4+p.z),a:.35+p.z*.6})},
+    confetti:{m:'fall',w:.8,i:p=>({s:rnd(3,6),vy:rnd(40,80),sway:rnd(20,40),vr:rnd(-4,4)})},
+    star:{m:'fall',w:.6,i:p=>({s:rnd(3.5,7.5),vy:rnd(16,36),sway:rnd(10,24)})},
+    shamrock:{m:'fall',w:.7,i:p=>({s:rnd(6,11),vy:rnd(18,38),sway:rnd(12,28)})},
+    petal:{m:'fall',w:1.2,i:p=>({s:rnd(4,8),vy:rnd(18,38),sway:rnd(24,44)})},
+    poppy:{m:'fall',w:.5,i:p=>({s:rnd(6,10),vy:rnd(10,22),sway:rnd(10,22),vr:rnd(-.6,.6)})},
+    seed:{m:'fall',w:1.4,i:p=>({s:rnd(3,5),vy:rnd(8,18),sway:rnd(20,40),vr:rnd(-.4,.4)})},
+    heart:{m:'rise',w:.3,i:p=>({s:rnd(5,11),vy:rnd(18,38),sway:rnd(14,30),a:rnd(.5,.9)})},
+    mote:{m:'rise',w:.2,i:p=>({s:rnd(1,2.4),vy:rnd(8,22),sway:rnd(6,16)})},
+    lantern:{m:'rise',w:.15,i:p=>({s:rnd(9,15)*(.6+p.z*.6),vy:rnd(10,22),sway:rnd(6,14),vr:0})},
+    firefly:{m:'wander',w:0,i:p=>({s:rnd(1.5,2.6),vx:rnd(-14,14),vy:rnd(-10,10),y:rnd(H*.45,H*.95)})},
+    bat:{m:'cross',w:0,i:p=>({s:rnd(8,14),dir:Math.random()<.5?1:-1,sp:rnd(55,105),y0:rnd(H*.08,H*.5)})}
+  };
+  function make(cfg,edge){
+    const p={k:cfg.k,c:pick(cfg.c),x:rnd(-20,W+20),y:rnd(0,H),z:Math.random(),ph:rnd(0,TAU),rot:rnd(0,TAU),vr:rnd(-1.5,1.5),flip:rnd(0,TAU),vf:rnd(1.5,3.5),vx:0,a:1,age:0};
+    const D=KIND[cfg.k]; Object.assign(p,D.i(p));
+    if(D.m==='cross'){ p.x = edge ? (p.dir>0?-40:W+40) : rnd(0,W); p.y=p.y0; }
+    else if(edge==='left') p.x=rnd(-90,-10);
+    else if(edge){ if(D.m==='rise') p.y=H+rnd(10,60); else if(D.m==='fall') p.y=rnd(-60,-10); }
+    return p;
+  }
+  function stepPart(p,dt){
+    const D=KIND[p.k]; p.ph+=dt*1.3; p.age+=dt; p.rot+=p.vr*dt*(1+Math.abs(wind)/120); p.flip+=p.vf*dt;
+    p.vx+=(wind*D.w-p.vx)*Math.min(1,dt*1.8);
+    if(D.m==='fall'){ p.y+=p.vy*(1+Math.abs(wind)/400)*dt; p.x+=(Math.sin(p.ph)*p.sway+p.vx)*dt; return p.y<H+30 && p.x<W+90 && p.x>-120; }
+    if(D.m==='rise'){ p.y-=p.vy*dt; p.x+=(Math.sin(p.ph)*p.sway+p.vx)*dt; return p.y>-40; }
+    if(D.m==='wander'){ p.vx+=rnd(-30,30)*dt; p.vy+=rnd(-30,30)*dt; p.vx=Math.max(-18,Math.min(18,p.vx)); p.vy=Math.max(-14,Math.min(14,p.vy));
+      p.x+=p.vx*dt; p.y+=p.vy*dt; if(p.y<H*.35) p.vy+=8*dt; return p.x>-20&&p.x<W+20&&p.y<H+20; }
+    if(D.m==='cross'){ p.x+=p.dir*p.sp*dt; p.y=p.y0+Math.sin(p.age*2.2)*18; return p.dir>0 ? p.x<W+60 : p.x>-60; }
+  }
+  /* shapes */
+  function star5(r,ir){ ctx.beginPath(); for(let i=0;i<10;i++){ const a=-Math.PI/2+i*Math.PI/5, rr=i%2?ir:r; i?ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr):ctx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr);} ctx.closePath(); }
+  function heartPath(s){ ctx.beginPath(); ctx.moveTo(0,s*.35); ctx.bezierCurveTo(-s*1.2,-s*.35,-s*.5,-s*1.1,0,-s*.45); ctx.bezierCurveTo(s*.5,-s*1.1,s*1.2,-s*.35,0,s*.35); ctx.closePath(); }
+  function drawPart(p){
+    ctx.save(); ctx.translate(p.x,p.y);
+    switch(p.k){
+      case 'snow': ctx.globalAlpha=p.a; ctx.fillStyle=p.c; ctx.beginPath(); ctx.arc(0,0,p.r,0,TAU); ctx.fill(); break;
+      case 'leaf': { ctx.rotate(p.rot); ctx.scale(Math.max(.15,Math.abs(Math.cos(p.flip))),1); const s=p.s; ctx.fillStyle=p.c; ctx.beginPath();
+        if(p.maple){ MAPLE.forEach(([x,y],i)=>i?ctx.lineTo(x*s,y*s):ctx.moveTo(x*s,y*s)); ctx.closePath(); }
+        else { ctx.moveTo(0,-s); ctx.quadraticCurveTo(s*.75,-s*.1,0,s*.9); ctx.quadraticCurveTo(-s*.75,-s*.1,0,-s); }
+        ctx.fill(); ctx.strokeStyle='rgba(40,20,8,.45)'; ctx.lineWidth=.8; ctx.beginPath(); ctx.moveTo(0,-s*.7); ctx.lineTo(0,s*1.25); ctx.stroke(); break; }
+      case 'confetti': ctx.rotate(p.rot); ctx.scale(1,Math.cos(p.flip)); ctx.fillStyle=p.c; ctx.fillRect(-p.s/2,-p.s*.3,p.s,p.s*.6); break;
+      case 'star': ctx.rotate(p.rot); ctx.scale(Math.max(.25,Math.abs(Math.cos(p.flip))),1); ctx.fillStyle=p.c; star5(p.s,p.s*.45); ctx.fill(); break;
+      case 'shamrock': { ctx.rotate(p.rot); ctx.scale(Math.max(.3,Math.abs(Math.cos(p.flip))),1); ctx.fillStyle=p.c; const s=p.s*.55;
+        for(let i=0;i<3;i++){ ctx.save(); ctx.rotate(i*TAU/3); ctx.translate(0,-s*.75); heartPath(s); ctx.fill(); ctx.restore(); }
+        ctx.strokeStyle=p.c; ctx.lineWidth=1.4; ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(s*.4,s*1.2,s*.2,s*1.9); ctx.stroke(); break; }
+      case 'petal': case 'seed': { ctx.rotate(p.rot); ctx.scale(Math.max(.2,Math.abs(Math.cos(p.flip))),1);
+        if(p.k==='seed'){ ctx.strokeStyle=p.c; ctx.globalAlpha=.8; ctx.lineWidth=.7; for(let i=0;i<7;i++){ const a=i*TAU/7; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(a)*p.s,Math.sin(a)*p.s); ctx.stroke(); } }
+        else { ctx.fillStyle=p.c; ctx.beginPath(); ctx.ellipse(0,0,p.s*.55,p.s,0,0,TAU); ctx.fill(); } break; }
+      case 'poppy': { ctx.rotate(p.rot); ctx.scale(Math.max(.4,Math.abs(Math.cos(p.flip*.5))),1); ctx.fillStyle=p.c;
+        for(let i=0;i<4;i++){ ctx.beginPath(); ctx.ellipse(Math.cos(i*TAU/4)*p.s*.45,Math.sin(i*TAU/4)*p.s*.45,p.s*.55,p.s*.45,i*TAU/4,0,TAU); ctx.fill(); }
+        ctx.fillStyle='#1a1214'; ctx.beginPath(); ctx.arc(0,0,p.s*.22,0,TAU); ctx.fill(); break; }
+      case 'heart': { ctx.globalAlpha=p.a*Math.min(1,p.y/(H*.25)); ctx.rotate(Math.sin(p.ph)*.25); ctx.fillStyle=p.c; heartPath(p.s); ctx.fill(); break; }
+      case 'mote': { const a=(.4+.6*Math.abs(Math.sin(p.ph*1.3)))*Math.min(1,p.y/(H*.3)); const g=ctx.createRadialGradient(0,0,0,0,0,p.s*4);
+        g.addColorStop(0,p.c); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.globalAlpha=a; ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,p.s*4,0,TAU); ctx.fill(); break; }
+      case 'firefly': { const a=Math.max(0,Math.sin(p.ph*1.6+p.z*9)); const g=ctx.createRadialGradient(0,0,0,0,0,p.s*6);
+        g.addColorStop(0,p.c); g.addColorStop(1,'rgba(246,255,154,0)'); ctx.globalAlpha=a; ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,p.s*6,0,TAU); ctx.fill(); break; }
+      case 'lantern': { const s=p.s; ctx.rotate(Math.sin(p.ph)*.08); const fade=Math.min(1,p.y/(H*.3));
+        const g=ctx.createRadialGradient(0,0,0,0,0,s*3); g.addColorStop(0,'rgba(255,170,60,.45)'); g.addColorStop(1,'rgba(255,120,40,0)');
+        ctx.globalAlpha=fade; ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,s*3,0,TAU); ctx.fill();
+        ctx.fillStyle=p.c; ctx.beginPath(); ctx.ellipse(0,0,s*.9,s*.75,0,0,TAU); ctx.fill();
+        ctx.fillStyle='#f2c14e'; ctx.fillRect(-s*.45,-s*.9,s*.9,s*.22); ctx.fillRect(-s*.45,s*.68,s*.9,s*.22);
+        ctx.strokeStyle='rgba(120,20,10,.6)'; ctx.lineWidth=.8; for(const xx of [-.4,0,.4]){ ctx.beginPath(); ctx.moveTo(xx*s,-s*.7); ctx.quadraticCurveTo(xx*s*1.5,0,xx*s,s*.7); ctx.stroke(); }
+        ctx.strokeStyle='#f2c14e'; ctx.beginPath(); ctx.moveTo(0,s*.9); ctx.lineTo(0,s*1.5); ctx.stroke(); break; }
+      case 'bat': { const s=p.s, f=Math.sin(p.age*14)*.8; ctx.scale(p.dir,1); ctx.fillStyle=p.c;
+        ctx.beginPath(); ctx.ellipse(0,0,s*.25,s*.35,0,0,TAU); ctx.fill();
+        for(const side of [-1,1]){ ctx.beginPath(); ctx.moveTo(0,-s*.1); ctx.quadraticCurveTo(side*s*.6,-s*(.6+f*.5),side*s*1.2,-s*f*.3);
+          ctx.quadraticCurveTo(side*s*.9,s*.1,side*s*.6,s*.05); ctx.quadraticCurveTo(side*s*.4,s*.25,0,s*.15); ctx.fill(); }
+        ctx.beginPath(); ctx.moveTo(-s*.15,-s*.3); ctx.lineTo(-s*.08,-s*.5); ctx.lineTo(0,-s*.3); ctx.lineTo(s*.08,-s*.5); ctx.lineTo(s*.15,-s*.3); ctx.fill(); break; }
+    }
+    ctx.restore();
+  }
+
+  /* ===== scene ===== */
+  function bodyPos(){ const b=sc.body; return b ? {x:W*b.x, y:H*b.y, r:Math.min(W,H)*b.r+12} : null; }
+  function drawSky(){
+    const g=ctx.createLinearGradient(0,0,0,H); sc.sky.forEach((c,i)=>g.addColorStop(i/(sc.sky.length-1),c)); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    stars.forEach(s=>{ const tw=.55+.45*Math.sin(clock*s.sp+s.ph); ctx.globalAlpha=s.a*tw; ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,TAU); ctx.fill();
+      if(s.r>1.2&&tw>.9){ ctx.globalAlpha=(tw-.9)*4*s.a; ctx.fillRect(s.x-s.r*3,s.y-.4,s.r*6,.8); ctx.fillRect(s.x-.4,s.y-s.r*3,.8,s.r*6); } });
+    ctx.globalAlpha=1;
+    const b=sc.body, P=bodyPos(); if(!b) return;
+    const pulse=.5+.5*Math.sin(clock*.6);
+    const glow=ctx.createRadialGradient(P.x,P.y,P.r*.5,P.x,P.y,P.r*(b.t==='sun'?4.5:3.2)+pulse*P.r*.4);
+    glow.addColorStop(0,b.t==='sun'?'rgba(255,220,150,.45)':'rgba(255,240,200,.25)'); glow.addColorStop(1,'rgba(255,220,150,0)');
+    ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(P.x,P.y,P.r*5,0,TAU); ctx.fill();
+    ctx.fillStyle=b.c; ctx.beginPath(); ctx.arc(P.x,P.y,P.r,0,TAU); ctx.fill();
+    if(b.t==='moon'){ ctx.fillStyle='rgba(120,90,60,.18)'; [[-.3,-.2,.22],[.25,.15,.16],[-.05,.35,.12]].forEach(([a,c,r])=>{ ctx.beginPath(); ctx.arc(P.x+a*P.r,P.y+c*P.r,r*P.r,0,TAU); ctx.fill(); }); }
+    if(b.t==='crescent'){ ctx.fillStyle=sc.sky[0]; ctx.beginPath(); ctx.arc(P.x+P.r*.42,P.y-P.r*.18,P.r*.9,0,TAU); ctx.fill(); }
+  }
+  function drawClouds(dt){
+    clouds.forEach(c=>{ c.x+=c.sp*dt; if(c.x>W+c.w) c.x=-c.w*1.5;
+      ctx.fillStyle=sc.night?'rgba(200,210,235,.10)':'rgba(255,255,255,.78)';
+      [[0,0,1,.42],[-.35,.12,.55,.3],[.38,.1,.6,.32],[.1,-.18,.55,.36]].forEach(([dx,dy,rw,rh])=>{ ctx.beginPath(); ctx.ellipse(c.x+dx*c.w,c.y+dy*c.w,c.w*rw*.5,c.w*rh*.5,0,0,TAU); ctx.fill(); }); });
+  }
+  const hillY=(h,x)=>H-h.base-Math.sin(x*h.f+h.p)*h.a-Math.sin(x*h.f*2.3+h.p*1.7)*h.a*.3;
+  function drawGround(){
+    if(city.length){ ctx.fillStyle=sc.city; city.forEach(b=>{ ctx.fillRect(b.x,H-b.h,b.w,b.h); });
+      if(sc.night) city.forEach(b=>b.win.forEach(w=>{ const on=Math.sin(clock*w.sp+w.ph)>-.6; if(!on) return; ctx.fillStyle='rgba(255,214,140,.75)'; ctx.fillRect(b.x+w.x,H-b.h+w.y,2.5,3); })); }
+    hills.forEach((h,i)=>{
+      if(h.pines){ ctx.fillStyle=h.pines; h.T.forEach(t=>{ const y=hillY(h,t.x)+4; for(let k=0;k<3;k++){ const w=t.h*(.42-k*.1), top=y-t.h*(1-k*.0)+k*t.h*.28;
+          ctx.beginPath(); ctx.moveTo(t.x,y-t.h+k*t.h*.22); ctx.lineTo(t.x+w,y-t.h*.32+k*t.h*.2); ctx.lineTo(t.x-w,y-t.h*.32+k*t.h*.2); ctx.closePath(); ctx.fill(); }
+          ctx.fillRect(t.x-1.5,y-t.h*.32,3,t.h*.32); }); }
+      ctx.fillStyle=h.c; ctx.beginPath(); ctx.moveTo(0,H); for(let x=0;x<=W+10;x+=10) ctx.lineTo(x,hillY(h,x)); ctx.lineTo(W,H); ctx.closePath(); ctx.fill();
+      if(sc.mist && i===0){ const y=H-h.base; const m=ctx.createLinearGradient(0,y-60,0,y+20); m.addColorStop(0,'rgba(255,200,150,0)'); m.addColorStop(1,`rgba(255,200,150,${.1+.06*Math.sin(clock*.25)})`); ctx.fillStyle=m; ctx.fillRect(0,y-60,W,80); }
+      (h.L||[]).forEach(L=>{ const y=hillY(h,L.x), f=.75+.25*Math.sin(clock*L.sp+L.ph);
+        ctx.fillStyle=`rgba(255,210,130,${.25*f})`; ctx.beginPath(); ctx.arc(L.x,y-3,7,0,TAU); ctx.fill(); ctx.fillStyle=`rgba(255,220,150,${f})`; ctx.fillRect(L.x-2,y-5,4,4); });
+    });
+    if(sc.lake) drawLake();
+    if(sc.fog){ for(let i=0;i<2;i++){ const y=H*(.78+i*.1), off=clock*(12+i*8);
+      ctx.fillStyle=`rgba(190,170,220,${.07-i*.02})`; ctx.beginPath(); ctx.moveTo(0,H);
+      for(let x=0;x<=W+10;x+=12) ctx.lineTo(x,y+Math.sin((x+off)*.012+i)*14); ctx.lineTo(W,H); ctx.closePath(); ctx.fill(); } }
+  }
+
+  /* ----- lake, rowboat and fishing line ----- */
+  const waterY=()=>H*(1-sc.lake.h);
+  function drawLake(){
+    const L=sc.lake, y0=waterY(), g=ctx.createLinearGradient(0,y0,0,H);
+    g.addColorStop(0,L.top); g.addColorStop(1,L.bottom); ctx.fillStyle=g; ctx.fillRect(0,y0,W,H-y0);
+    // sun glints drifting on the water
+    const P=bodyPos(), gx=P?P.x:W*.5;
+    for(let i=0;i<14;i++){ const yy=y0+4+i*(H-y0)/15, wv=Math.sin(clock*1.3+i*1.7), len=(40-i*1.6)*(.6+.4*wv);
+      ctx.globalAlpha=.18+.12*Math.sin(clock*2+i); ctx.fillStyle=L.glint; ctx.fillRect(gx-len/2+Math.sin(clock*.7+i)*10,yy,len,1.5); }
+    ctx.globalAlpha=1;
+    // gentle ripple lines across the lake
+    ctx.strokeStyle='rgba(255,255,255,.07)'; ctx.lineWidth=1;
+    for(let i=0;i<6;i++){ const yy=y0+10+i*(H-y0)/6; ctx.beginPath(); for(let x=0;x<=W+10;x+=14){ const v=yy+Math.sin(x*.03+clock*(.8+i*.1)+i)*1.6; x?ctx.lineTo(x,v):ctx.moveTo(x,v); } ctx.stroke(); }
+    if(sc.boat) drawBoat(y0);
+  }
+  let bite=0, nextBite=6;
+  function drawBoat(y0){
+    const bx=W*.68, by=y0+10+Math.sin(clock*1.1)*1.6, tilt=Math.sin(clock*.9)*.03;
+    ctx.save(); ctx.translate(bx,by); ctx.rotate(tilt); ctx.fillStyle='#0b1a20';
+    ctx.beginPath(); ctx.moveTo(-34,-6); ctx.lineTo(34,-6); ctx.quadraticCurveTo(28,8,18,9); ctx.lineTo(-20,9); ctx.quadraticCurveTo(-30,6,-34,-6); ctx.fill();
+    // angler sitting in the stern, wearing a hat
+    ctx.fillRect(-14,-20,9,15); ctx.beginPath(); ctx.arc(-9.5,-24,4.6,0,TAU); ctx.fill(); ctx.fillRect(-17,-28.5,15,2.6); ctx.fillRect(-13,-32,7,4);
+    // rod
+    const tipX=-60, tipY=-58; ctx.strokeStyle='#0b1a20'; ctx.lineWidth=1.8; ctx.beginPath(); ctx.moveTo(-6,-14); ctx.lineTo(tipX,tipY); ctx.stroke();
+    ctx.restore();
+    // line and bobber (it dips when something bites)
+    const dip=bite>0?Math.sin(bite*18)*3+3:0, fx=bx-82, fy=y0+16+Math.sin(clock*1.6)*1.2+dip;
+    const tx=bx+(-60)*Math.cos(tilt)-(-58)*Math.sin(tilt), ty=by+(-60)*Math.sin(tilt)+(-58)*Math.cos(tilt);
+    ctx.strokeStyle='rgba(230,240,240,.55)'; ctx.lineWidth=.7; ctx.beginPath(); ctx.moveTo(tx,ty); ctx.quadraticCurveTo(fx+4,ty+20,fx,fy-3); ctx.stroke();
+    ctx.fillStyle='#ff5a4a'; ctx.beginPath(); ctx.arc(fx,fy-2,3,Math.PI,0); ctx.fill(); ctx.fillStyle='#f4f4f4'; ctx.beginPath(); ctx.arc(fx,fy-2,3,0,Math.PI); ctx.fill();
+    if(bite>0){ ctx.strokeStyle=`rgba(255,255,255,${.4*(bite/1.2)})`; ctx.beginPath(); ctx.ellipse(fx,fy+1,10+(1.2-bite)*14,3+(1.2-bite)*3,0,0,TAU); ctx.stroke(); }
+  }
+  function fishPath(s,c){ ctx.fillStyle=c; ctx.beginPath(); ctx.ellipse(0,0,s,s*.38,0,0,TAU); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-s*.8,0); ctx.lineTo(-s*1.5,-s*.45); ctx.lineTo(-s*1.35,0); ctx.lineTo(-s*1.5,s*.45); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-s*.1,-s*.32); ctx.lineTo(s*.25,-s*.6); ctx.lineTo(s*.4,-s*.3); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(s*.62,-s*.08,s*.09,0,TAU); ctx.fill(); }
+
+  /* ===== periodic moments ===== */
+  const EV={
+    fireworks(cfg){ const out=[]; const n=Math.random()<.35?2:1; for(let k=0;k<n;k++){
+      const tx=rnd(W*.15,W*.85), ty=rnd(H*.1,H*.42), x0=tx+rnd(-50,50), c=pick(cfg.c), c2=pick(cfg.c), delay=k*rnd(.3,.8);
+      const o={t:-delay,sparks:[],burst:false,flash:0};
+      o.step=dt=>{ o.t+=dt; if(o.t<0) return true;
+        if(!o.burst){ if(o.t>=1){ o.burst=true; o.flash=1; const N=Math.random()<.5?54:40, ring=Math.random()<.35;
+            for(let i=0;i<N;i++){ const a=i/N*TAU+rnd(-.05,.05), sp=ring?150:rnd(70,180); o.sparks.push({x:tx,y:ty,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,l:rnd(1.1,1.9),t:0,c:Math.random()<.7?c:c2}); } }
+          return true; }
+        o.flash=Math.max(0,o.flash-dt*3);
+        o.sparks.forEach(s=>{ s.t+=dt; s.vx*=1-dt*1.3; s.vy=s.vy*(1-dt*1.3)+55*dt; s.x+=s.vx*dt; s.y+=s.vy*dt; });
+        o.sparks=o.sparks.filter(s=>s.t<s.l); return o.sparks.length>0; };
+      o.draw=()=>{ if(o.t<0) return;
+        if(!o.burst){ const p=o.t, x=x0+(tx-x0)*p, y=H+(ty-H)*(1-(1-p)*(1-p)); ctx.fillStyle='rgba(255,230,180,.9)'; ctx.beginPath(); ctx.arc(x,y,1.6,0,TAU); ctx.fill();
+          ctx.strokeStyle='rgba(255,210,150,.35)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x-(tx-x0)*.06,y+28); ctx.stroke(); return; }
+        ctx.globalCompositeOperation=sc.night?'lighter':'source-over';
+        if(o.flash>0){ const g=ctx.createRadialGradient(tx,ty,0,tx,ty,90); g.addColorStop(0,`rgba(255,255,255,${.35*o.flash})`); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(tx,ty,90,0,TAU); ctx.fill(); }
+        o.sparks.forEach(s=>{ const a=1-s.t/s.l; ctx.globalAlpha=a; ctx.fillStyle=s.c; ctx.beginPath(); ctx.arc(s.x,s.y,1.7,0,TAU); ctx.fill();
+          ctx.globalAlpha=a*.35; ctx.beginPath(); ctx.arc(s.x,s.y,4,0,TAU); ctx.fill(); });
+        ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over'; };
+      out.push(o); } return out; },
+    gust(){ const o={t:0}; const cfg=sc.parts[0]; for(let i=0;i<14;i++) parts.push(make(cfg,'left'));
+      o.step=dt=>{ o.t+=dt; wind=Math.sin(Math.min(1,o.t/4.5)*Math.PI)*240; if(o.t>4.5){ wind=0; return false; } return true; }; o.draw=()=>{}; return [o]; },
+    shoot(){ const o={x:rnd(W*.3,W*1.05),y:rnd(0,H*.25),vx:-rnd(520,760),vy:rnd(220,340),t:0,d:rnd(.7,1.1)};
+      o.step=dt=>(o.t+=dt)<o.d; o.draw=()=>{ const p=o.t/o.d,x=o.x+o.vx*o.t,y=o.y+o.vy*o.t,a=Math.sin(p*Math.PI);
+        const g=ctx.createLinearGradient(x,y,x-o.vx*.12,y-o.vy*.12); g.addColorStop(0,`rgba(255,255,255,${a})`); g.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.strokeStyle=g; ctx.lineWidth=1.8; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x-o.vx*.12,y-o.vy*.12); ctx.stroke(); }; return [o]; },
+    aurora(){ const o={t:0}; o.step=dt=>(o.t+=dt)<14; o.sky=1;
+      o.draw=()=>{ const k=Math.sin(Math.min(1,o.t/14)*Math.PI);
+        for(let band=0;band<2;band++){ const g=ctx.createLinearGradient(0,H*.05,0,H*.45);
+          g.addColorStop(0,'rgba(120,255,200,0)'); g.addColorStop(.5,`rgba(${band?'130,200,255':'110,255,190'},${.16*k})`); g.addColorStop(1,'rgba(120,255,200,0)');
+          ctx.fillStyle=g; ctx.beginPath();
+          for(let x=0;x<=W+10;x+=12){ const y=H*(.16+band*.08)+Math.sin(x*.006+o.t*.5+band)*30+Math.sin(x*.017-o.t*.3)*12; x?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+          for(let x=W+10;x>=0;x-=12) ctx.lineTo(x,H*(.32+band*.08)+Math.sin(x*.005+o.t*.4+band*2)*26);
+          ctx.closePath(); ctx.fill(); } }; return [o]; },
+    rays(){ const o={t:0}; o.step=dt=>(o.t+=dt)<8; o.sky=1;
+      o.draw=()=>{ const P=bodyPos()||{x:W/2,y:H*.85,r:30}, k=Math.sin(o.t/8*Math.PI), R=Math.hypot(W,H);
+        ctx.save(); ctx.translate(P.x,P.y); ctx.rotate(o.t*.03); ctx.fillStyle=`rgba(255,220,160,${.09*k})`;
+        for(let i=0;i<14;i++){ const a=i*TAU/14; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(a-.07)*R,Math.sin(a-.07)*R); ctx.lineTo(Math.cos(a+.07)*R,Math.sin(a+.07)*R); ctx.closePath(); ctx.fill(); }
+        ctx.restore(); }; return [o]; },
+    sweep(){ const o={t:0}; o.step=dt=>(o.t+=dt)<5;
+      o.draw=()=>{ const p=o.t/5, x=-W*.6+p*W*2.2, g=ctx.createLinearGradient(x-120,0,x+120,H*.4);
+        g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(.5,`rgba(255,246,225,${.08*Math.sin(p*Math.PI)})`); g.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }; return [o]; },
+    rainbow(){ const o={t:0}; o.step=dt=>(o.t+=dt)<10; o.sky=1;
+      o.draw=()=>{ const k=Math.sin(o.t/10*Math.PI), cx=W*.5, cy=H*1.02, R=Math.max(W*.62,H*.42);
+        ['#ff5a5a','#ff9a3c','#ffe14a','#5fd18a','#4aa8ff','#6a6aff','#b06aff'].forEach((c,i)=>{ ctx.strokeStyle=c; ctx.globalAlpha=.2*k; ctx.lineWidth=9; ctx.beginPath(); ctx.arc(cx,cy,R-i*9,Math.PI,0); ctx.stroke(); });
+        ctx.globalAlpha=1; }; return [o]; },
+    heartburst(){ const cx=rnd(W*.2,W*.8), cy=rnd(H*.15,H*.6), hs=[];
+      for(let i=0;i<16;i++){ const a=i/16*TAU; hs.push({x:cx,y:cy,vx:Math.cos(a)*rnd(60,110),vy:Math.sin(a)*rnd(60,110),s:rnd(4,8),c:pick(['#ff4f7e','#ff7aa8','#ffd1df'])}); }
+      const o={t:0}; o.step=dt=>{ o.t+=dt; hs.forEach(h=>{ h.vx*=1-dt*1.5; h.vy=h.vy*(1-dt*1.5)-6*dt; h.x+=h.vx*dt; h.y+=h.vy*dt; }); return o.t<2.6; };
+      o.draw=()=>{ const a=1-o.t/2.6; hs.forEach(h=>{ ctx.save(); ctx.translate(h.x,h.y); ctx.globalAlpha=a; ctx.fillStyle=h.c; heartPath(h.s); ctx.fill(); ctx.restore(); });
+        if(o.t<.5){ const g=ctx.createRadialGradient(cx,cy,0,cx,cy,70); g.addColorStop(0,`rgba(255,160,190,${.3*(1-o.t*2)})`); g.addColorStop(1,'rgba(255,160,190,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,70,0,TAU); ctx.fill(); } }; return [o]; },
+    lanterns(){ const cfg=sc.parts.find(p=>p.k==='lantern'); if(cfg) for(let i=0;i<9;i++) parts.push(make(cfg,true)); return []; },
+    lightning(){ const cfg={k:'bat',c:['#0a060d']}; for(let i=0;i<6;i++){ const b=make(cfg,true); b.sp=rnd(140,200); b.y0=rnd(H*.15,H*.45); b.x+= -b.dir*rnd(0,120); parts.push(b); }
+      const o={t:0}; o.step=dt=>(o.t+=dt)<.6;
+      o.draw=()=>{ const a=o.t<.08?.32:(o.t>.16&&o.t<.24?.22:0); if(a){ ctx.fillStyle=`rgba(225,215,255,${a})`; ctx.fillRect(0,0,W,H); } }; return [o]; },
+    fishjump(){ const y0=waterY(), x0=rnd(W*.1,W*.85), dir=Math.random()<.5?1:-1, span=rnd(50,90)*dir, hgt=rnd(40,75), dur=1.25,
+      c=pick(['#c9d8a8','#e0b070','#9fc7c9']), s=rnd(9,13), o={t:0,rings:[]};
+      o.step=dt=>{ const was=o.t; o.t+=dt; if(was<=0.001) o.rings.push({x:x0,t:0}); if(was<dur && o.t>=dur) o.rings.push({x:x0+span,t:0});
+        o.rings.forEach(r=>r.t+=dt); return o.t<dur+1.6; };
+      o.draw=()=>{ o.rings.forEach(r=>{ const a=Math.max(0,1-r.t/1.6); ctx.strokeStyle=`rgba(255,255,255,${.5*a})`; ctx.lineWidth=1.2;
+          for(let k=0;k<2;k++){ const rr=6+r.t*28-k*9; if(rr>2){ ctx.beginPath(); ctx.ellipse(r.x,y0+12,rr,rr*.28,0,0,TAU); ctx.stroke(); } }
+          if(r.t<.5){ for(let i=0;i<6;i++){ const a2=-Math.PI*(.15+i*.14), d=r.t*60; ctx.fillStyle=`rgba(220,240,255,${.8*(1-r.t*2)})`; ctx.beginPath(); ctx.arc(r.x+Math.cos(a2)*d*.6,y0+10+Math.sin(a2)*d-0+r.t*r.t*90,1.4,0,TAU); ctx.fill(); } } });
+        if(o.t<dur){ const p=o.t/dur, x=x0+span*p, y=y0+12-4*hgt*p*(1-p), vy=-4*hgt*(1-2*p)/dur, vx=span/dur;
+          ctx.save(); ctx.translate(x,y); ctx.rotate(Math.atan2(vy,vx)); if(dir<0) ctx.scale(1,-1); fishPath(s,c); ctx.restore(); } };
+      return [o]; },
+    birds(){ const out=[], n=(Math.random()*3|0)+3, y0=rnd(H*.08,H*.35), dir=Math.random()<.5?1:-1, dur=rnd(9,13), c=sc.night?'rgba(230,236,250,.7)':'rgba(40,48,64,.75)';
+      for(let i=0;i<n;i++){ const off=i*rnd(.15,.3), dy=(i%2?1:-1)*Math.ceil(i/2)*rnd(10,16), o={t:-off};
+        o.step=dt=>(o.t+=dt)<dur;
+        o.draw=()=>{ if(o.t<0) return; const p=o.t/dur, x=dir>0?-30+p*(W+60):W+30-p*(W+60), y=y0+dy+Math.sin(o.t*1.3+i)*6, f=Math.sin(o.t*9+i)*5;
+          ctx.strokeStyle=c; ctx.lineWidth=1.6; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(x-8,y-f); ctx.quadraticCurveTo(x-4,y-3-f*.4,x,y); ctx.quadraticCurveTo(x+4,y-3-f*.4,x+8,y-f); ctx.stroke(); };
+        out.push(o); } return out; },
+    shower(){ const o={t:0,dur:7,drops:[]}; for(let i=0;i<Math.round(W*H/2600);i++) o.drops.push({x:rnd(0,W),y:rnd(-H,H),v:rnd(420,620),l:rnd(8,16)});
+      o.step=dt=>{ o.t+=dt; o.drops.forEach(d=>{ d.y+=d.v*dt; d.x-=d.v*.12*dt; if(d.y>H){ d.y=rnd(-40,0); d.x=rnd(0,W+60); } });
+        if(o.t>=o.dur && !sc.night && !o.bow){ o.bow=1; live.push(...EV.rainbow()); } return o.t<o.dur; };
+      o.draw=()=>{ const k=Math.min(1,o.t/1.2,(o.dur-o.t)/1.2); ctx.fillStyle=`rgba(${sc.night?'40,50,80':'90,110,140'},${.16*k})`; ctx.fillRect(0,0,W,H);
+        ctx.strokeStyle=sc.night?`rgba(190,210,240,${.45*k})`:`rgba(255,255,255,${.6*k})`; ctx.lineWidth=1; ctx.beginPath();
+        o.drops.forEach(d=>{ ctx.moveTo(d.x,d.y); ctx.lineTo(d.x+d.l*.12,d.y-d.l); }); ctx.stroke(); };
+      return [o]; },
+    planes(){ const y0=rnd(H*.15,H*.45), dur=rnd(6,8), o={t:0}; o.step=dt=>(o.t+=dt)<dur;
+      o.draw=()=>{ const p=o.t/dur, x=-40+p*(W+80), y=y0+Math.sin(o.t*1.4)*34, dy=Math.cos(o.t*1.4)*34*1.4, ang=Math.atan2(dy,(W+80)/dur);
+        ctx.save(); ctx.translate(x,y); ctx.rotate(ang); ctx.fillStyle='#f4f8fb'; ctx.beginPath(); ctx.moveTo(14,0); ctx.lineTo(-12,-8); ctx.lineTo(-6,0); ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#c9d6de'; ctx.beginPath(); ctx.moveTo(14,0); ctx.lineTo(-12,7); ctx.lineTo(-6,0); ctx.closePath(); ctx.fill(); ctx.restore();
+        ctx.strokeStyle='rgba(244,248,251,.25)'; ctx.setLineDash([3,6]); ctx.lineWidth=1; ctx.beginPath();
+        for(let k=1;k<26;k++){ const tt=Math.max(0,o.t-k*.08), xx=-40+(tt/dur)*(W+80), yy=y0+Math.sin(tt*1.4)*34; k===1?ctx.moveTo(xx,yy):ctx.lineTo(xx,yy); } ctx.stroke(); ctx.setLineDash([]); }; return [o]; },
+    butterflies(){ const out=[]; for(let i=0;i<3;i++){ const y0=rnd(H*.2,H*.75), dur=rnd(7,10), c=pick(['#ffb3d1','#ffe17a','#b9a8ff','#9fe8c8']), d0=rnd(0,1.2), dir=Math.random()<.5?1:-1, o={t:-d0};
+      o.step=dt=>(o.t+=dt)<dur;
+      o.draw=()=>{ if(o.t<0) return; const p=o.t/dur, x= dir>0 ? -30+p*(W+60) : W+30-p*(W+60), y=y0+Math.sin(o.t*2.1)*40+Math.sin(o.t*5)*6, f=Math.abs(Math.sin(o.t*15));
+        ctx.save(); ctx.translate(x,y); ctx.fillStyle=c;
+        for(const s of [-1,1]){ ctx.save(); ctx.scale(s*(.25+.75*f),1); ctx.beginPath(); ctx.ellipse(6,-4,6,5,.4,0,TAU); ctx.fill(); ctx.beginPath(); ctx.ellipse(5,4,4,3.5,-.4,0,TAU); ctx.fill(); ctx.restore(); }
+        ctx.fillStyle='#2a2238'; ctx.fillRect(-.8,-6,1.6,12); ctx.restore(); }; out.push(o); } return out; }
+  };
+
+  /* ===== engine ===== */
+  function target(cfg){ return Math.round(Math.min(cfg.max,Math.max(cfg.max/3,W*H/cfg.div))); }
+  function seed(){
+    parts=[]; stars=[]; hills=[]; city=[]; live=[]; wind=0; if(!sc) return;
+    if(sc.stars) for(let i=0,n=Math.round(W*H/7000);i<n;i++) stars.push({x:rnd(0,W),y:rnd(0,H*.7),r:rnd(.3,1.5),a:rnd(.4,1),sp:rnd(.8,2.6),ph:rnd(0,TAU)});
+    hills=(sc.hills||[]).map(h=>{ const o={c:h.c,base:H*h.b,a:h.a,f:h.f,p:rnd(0,9),L:[]}; for(let i=0;i<(h.lights||0);i++) o.L.push({x:rnd(W*.08,W*.92),sp:rnd(.5,1.4),ph:rnd(0,TAU)}); return o; });
+    clouds=[]; for(let i=0;i<(sc.clouds||0);i++) clouds.push({x:rnd(-W*.2,W),y:rnd(H*.05,H*.32),w:rnd(70,150),sp:rnd(4,10)});
+    hills.forEach((h,i)=>{ const src=(sc.hills||[])[i]; h.pines=src&&src.pines; h.T=[]; if(h.pines){ let x=rnd(0,30); while(x<W+20){ h.T.push({x,h:rnd(18,38)}); x+=rnd(14,46); } } });
+    if(sc.city){ let x=-10; while(x<W+10){ const w=rnd(22,58), h=rnd(H*.06,H*.2), win=[]; for(let yy=8;yy<h-6;yy+=9) for(let xx=5;xx<w-6;xx+=8) if(Math.random()<.35) win.push({x:xx,y:yy,sp:rnd(.05,.3),ph:rnd(0,TAU)}); city.push({x,w,h,win}); x+=w+rnd(1,6); } }
+    sc.parts.forEach(cfg=>{ for(let i=0,n=target(cfg);i<n;i++) parts.push(make(cfg,false)); });
+    events=sc.events.map(e=>({cfg:e,next:rnd(2,Math.min(8,e.every[0]))}));
+  }
+  function step(dt){
+    if(sc.boat){ if(bite>0) bite=Math.max(0,bite-dt); else if((nextBite-=dt)<=0){ bite=1.2; nextBite=rnd(5,10); } }
+    events.forEach(e=>{ e.next-=dt; if(e.next<=0){ live.push(...EV[e.cfg.k](e.cfg)); e.next=rnd(e.cfg.every[0],e.cfg.every[1]); } });
+    live=live.filter(o=>o.step(dt));
+    parts=parts.filter(p=>stepPart(p,dt));
+    sc.parts.forEach(cfg=>{ const have=parts.reduce((n,p)=>n+(p.k===cfg.k),0), need=target(cfg); for(let i=have;i<need;i++) parts.push(make(cfg,true)); });
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H); drawSky(); drawClouds(lastDt);
+    live.forEach(o=>{ if(o.sky) o.draw(); });
+    parts.forEach(p=>{ if(p.z<.45 && p.k!=='bat') drawPart(p); });
+    drawGround();
+    parts.forEach(p=>{ if(p.z>=.45 || p.k==='bat') drawPart(p); });
+    live.forEach(o=>{ if(!o.sky) o.draw(); });
+  }
+  let lastDt=0;
+  function frame(now){ const dt=Math.min(.05,(now-(last||now))/1000); last=now; lastDt=dt; clock+=dt; step(dt); draw(); raf=requestAnimationFrame(frame); }
+  function stop(){ cancelAnimationFrame(raf); raf=0; last=0; }
+  function start(){ stop(); if(!sc){ ctx.clearRect(0,0,W,H); return; } if(reduce.matches || document.hidden){ draw(); return; } raf=requestAnimationFrame(frame); }
+  function size(){ dpr=Math.min(2,window.devicePixelRatio||1); W=window.innerWidth; H=window.innerHeight; cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); ctx.setTransform(dpr,0,0,dpr,0,0); seed(); }
+
+  /* ===== palette ===== */
+  const VARS={bg:'--bg',surface:'--surface',raised:'--raised',ink:'--ink',muted:'--muted',line:'--line',accent:'--accent',accentInk:'--accent-ink',accentSoft:'--accent-soft',
+    save:'--save',saveSoft:'--save-soft',warn:'--warn',bad:'--bad',badSoft:'--bad-soft',good:'--good',track:'--track',hero:'--hero',heroInk:'--hero-ink',heroGlow:'--hero-glow',title:'--title'};
+  function paint(p){
+    Object.values(VARS).forEach(v=>root.style.removeProperty(v)); root.style.removeProperty('color-scheme');
+    if(!p) return;
+    if(p.scheme) root.style.setProperty('color-scheme',p.scheme);
+    const full=Object.assign({raised:p.surface,saveSoft:p.accentSoft,warn:'#f2b05a',badSoft:'rgba(255,120,120,.16)',track:p.line},p);
+    Object.entries(VARS).forEach(([k,v])=>{ if(full[k]) root.style.setProperty(v,full[k]); });
+  }
+
+  let pref='auto', tod='auto', night=null;
+  try{ pref=localStorage.getItem('ledger.theme')||'auto'; tod=localStorage.getItem('ledger.tod')||'auto'; }catch(e){}
+  if(pref!=='auto' && pref!=='default' && !T[pref]) pref='auto';
+  if(!['auto','day','night'].includes(tod)) tod='auto';
+  const isNight = d => { const h=d.getHours(); return h>=19 || h<8; }; // 7 PM to 8 AM
+  function apply(){
+    const now=new Date(), k = pref==='auto' ? autoTheme(now) : pref, t = T[k] || null;
+    const n = tod==='auto' ? isNight(now) : tod==='night';
+    if(t) root.setAttribute('data-holiday',k); else root.removeAttribute('data-holiday');
+    root.setAttribute('data-tod', n?'night':'day');
+    const pal = t ? t.pal : BASE;
+    paint(n ? (t ? pal : null) : lightPal(Object.assign({},BASE,pal)));
+    greet.hidden=!(t && t.greet); greet.textContent=t&&t.greet?t.greet:'';
+    if(k!==theme || n!==night){ theme=k; night=n; sc=buildScene(t,n); seed(); }
+    const meta=document.querySelector('meta[name="theme-color"]'); if(meta) meta.setAttribute('content', sc ? sc.sky[0] : (n?'#1a2123':lightPal(BASE).bg));
+    start();
+  }
+  sel.innerHTML='<option value="auto">Automatic</option><option value="default">Everyday</option>'
+    +'<optgroup label="Seasons">'+SEASONS.map(k=>`<option value="${k}">${T[k].label}</option>`).join('')+'</optgroup>'
+    +'<optgroup label="Holidays">'+ORDER.map(k=>`<option value="${k}">${T[k].label}</option>`).join('')+'</optgroup>';
+  sel.value=pref;
+  sel.insertAdjacentHTML('afterend','<select id="tod-sel" aria-label="Day or night"><option value="auto">Day/night by time</option><option value="day">Always day</option><option value="night">Always night</option></select>');
+  const todSel=document.getElementById('tod-sel'); todSel.value=tod;
+  todSel.addEventListener('change',()=>{ tod=todSel.value; try{ localStorage.setItem('ledger.tod',tod); }catch(e){} apply(); });
+  sel.addEventListener('change',()=>{ pref=sel.value; try{ localStorage.setItem('ledger.theme',pref); }catch(e){} apply(); });
+  window.addEventListener('resize',()=>{ size(); start(); });
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden) stop(); else apply(); });
+  if(reduce.addEventListener) reduce.addEventListener('change',start);
+  setInterval(()=>{ if(!document.hidden && (pref==='auto'||tod==='auto')) apply(); },60000); // follow the clock: holiday weeks, seasons, day and night
+  size(); apply();
+})();
+</script>
 
 <script>
 /* Tiny built-in PDF writer (text, lines, pages) so PDF export works with no internet. */
