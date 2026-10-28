@@ -270,7 +270,9 @@ function savingsNames(st){ const out=[], seen=new Set();
   return out; }
 function ensureLeftover(st){ const names=savingsNames(st);
   if(st.leftoverTo && !names.some(n=>key(n)===key(st.leftoverTo))) st.leftoverTo=null;
-  if(!st.leftoverTo && names.length) st.leftoverTo=names[0]; }
+  if(!st.leftoverTo && names.length) st.leftoverTo=names[0];
+  if(st.spendLeftTo && !names.some(n=>key(n)===key(st.spendLeftTo))) st.spendLeftTo=null;
+  if(!st.spendLeftTo && names.length) st.spendLeftTo=names[0]; }
 const ymNow = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
 const ymNext = ym => { let [y,m]=ym.split('-').map(Number); m++; if(m>12){m=1;y++;} return y+'-'+String(m).padStart(2,'0'); };
 const ymLabel = ym => { const [y,m]=ym.split('-').map(Number); return new Date(y,m-1,1).toLocaleString('en-US',{month:'long',year:'numeric'}); };
@@ -291,6 +293,7 @@ function normalize(s){
     b.budgetedBills=(Array.isArray(s.budgetedBills)?s.budgetedBills:[]).map(x=>({...x,charges:Array.isArray(x.charges)?x.charges:[]}));
     b.savings=Array.isArray(s.savings)?s.savings:[];
     b.leftoverTo=s.leftoverTo||null;
+    b.spendLeftTo=s.spendLeftTo||null;
     b.spending=Array.isArray(s.spending)?s.spending:[];
     b.bigTx=Array.isArray(s.bigTx)?s.bigTx:[];
     b.accounts=Array.isArray(s.accounts)?s.accounts.map(a=>({name:a.name,balance:+a.balance||0})):null;
@@ -515,11 +518,13 @@ function renderMonth(){
       </form>
       ${tx ? `<div class="rows">${tx}</div>` : `<p class="hint">Log each purchase. Use “Got back” for refunds or money returned to you.</p>`}
       <div class="kv total"><span>Left to spend</span><span class="num ${t.left<0?'neg':''}">${t.left<0?'−'+money(-t.left):money(t.left)}</span></div>
+      ${state.spendLeftTo ? `<div class="leftover-to"><label for="spend-left-to">Left to spend goes to</label><select id="spend-left-to">${savingsNames(state).map(n=>`<option value="${esc(n)}" ${key(n)===key(state.spendLeftTo)?'selected':''}>${esc(n)}</option>`).join('')}</select><span class="num ${t.left<0?'neg':'pos'}">${signed(t.left)}</span></div>`
+        : `<p class="hint">Create a savings account in History to collect what you don’t spend.</p>`}
     </section>
 
     <div class="reset">
       <p><strong>Finished with ${ymLabel(state.month)}?</strong></p>
-      <p class="hint">Starting a new month saves this one to History. Each savings deposit goes into its account in History${state.budgetedBills.length && state.leftoverTo?`, and ${t.leftover<0?'the '+money(-t.leftover)+' budgeted bills went over comes out of':'the '+money(t.leftover)+' left from budgeted bills goes into'} ${esc(state.leftoverTo)}`:''}. The spending log and bill charges are cleared and bills are unticked. Your pay, bills and savings amounts carry over to ${ymLabel(ymNext(state.month))}.</p>
+      <p class="hint">Starting a new month saves this one to History. Each savings deposit goes into its account in History${state.budgetedBills.length && state.leftoverTo?`, and ${t.leftover<0?'the '+money(-t.leftover)+' budgeted bills went over comes out of':'the '+money(t.leftover)+' left from budgeted bills goes into'} ${esc(state.leftoverTo)}`:''}${state.spendLeftTo?`. ${t.left<0?'The '+money(-t.left)+' you overspent comes out of':'The '+money(t.left)+' left to spend goes into'} ${esc(state.spendLeftTo)}`:''}. The spending log and bill charges are cleared and bills are unticked. Your pay, bills and savings amounts carry over to ${ymLabel(ymNext(state.month))}.</p>
       ${confirming ? `<div class="confirm"><button class="btn danger" id="do-reset">Archive and start ${ymLabel(ymNext(state.month))}</button><button class="btn ghost" id="cancel-reset">Cancel</button></div>`
                    : `<div class="confirm"><button class="btn ghost" id="ask-reset">Start new month</button></div>`}
     </div>
@@ -538,6 +543,7 @@ function renameAccount(oldName,newName){
   state.savings.forEach(x=>{ if(key(x.name)===key(oldName)) x.name=newName; });
   state.bigTx.forEach(x=>{ if(key(x.account)===key(oldName)) x.account=newName; });
   if(key(state.leftoverTo)===key(oldName)) state.leftoverTo=newName;
+  if(key(state.spendLeftTo)===key(oldName)) state.spendLeftTo=newName;
   return true;
 }
 function renderSavingsPanel(){
@@ -545,7 +551,7 @@ function renderSavingsPanel(){
   ensureLeftover(state);
   const names=savingsNames(state);
   const total=sum(state.accounts,x=>x.balance);
-  const pending = n => sum(state.savings.filter(x=>!x.skip && key(x.name)===key(n)),x=>x.monthly) + (state.budgetedBills.length && key(n)===key(state.leftoverTo)?t.leftover:0);
+  const pending = n => sum(state.savings.filter(x=>!x.skip && key(x.name)===key(n)),x=>x.monthly) + (state.budgetedBills.length && key(n)===key(state.leftoverTo)?t.leftover:0) + (key(n)===key(state.spendLeftTo)?t.left:0);
   const rows = names.map(n=>{ const p=pending(n), a=findAcct(state,n);
     if(editingAcct && key(n)===editingAcct) return `<form class="acct-edit" data-rename="${esc(n)}">
         <input id="acct-edit" value="${esc(n)}" aria-label="Account name" autocomplete="off">
@@ -607,7 +613,7 @@ function renderHistory(){
         ${s.savings.length?`<div><h3>Savings</h3>${s.savings.map(x=>kv(esc(x.name),(x.skip?'skipped':signed(+x.monthly||0)))).join('')}</div>`:''}
         <div><h3>Spending</h3>${kv('Subtotal',money(t.subtotal))}
           ${[...s.spending].sort((a,b)=>a.at-b.at).map(x=>kv(stampFlat(x.at)+' · '+esc(x.note||(x.dir==='in'?'Money back':'Spent')),(x.dir==='in'?'+':'−')+money(x.amount))).join('')}
-          ${kv('<strong>Left to spend</strong>','<strong>'+(t.left<0?'−'+money(-t.left):money(t.left))+'</strong>')}</div>
+          ${kv('<strong>Left to spend</strong>'+(s.spendLeftTo?' → '+esc(s.spendLeftTo):''),'<strong>'+(t.left<0?'−'+money(-t.left):money(t.left))+'</strong>')}</div>
       </div></details>`;
   }).join('')+`</div>`;
 }
@@ -681,6 +687,7 @@ document.addEventListener('change', e=>{
   const el=e.target;
   if(el.dataset.top){ state[el.dataset.top]=parseAmt(el.value); save(); render(); return; }
   if(el.id==='leftover-to'){ state.leftoverTo=el.value; save(); render(); return; }
+  if(el.id==='spend-left-to'){ state.spendLeftTo=el.value; save(); render(); return; }
   const row=el.closest('[data-list]'); if(!row) return;
   const item=state[row.dataset.list].find(x=>x.id===row.dataset.id); if(!item) return;
   if(el.matches('[data-paid]')) item.paid=el.checked;
@@ -834,7 +841,7 @@ function buildPdf(){
     row('Total expense',pdfMoney(t.monthly+t.budgeted+t.saved));
     row('Subtotal',pdfMoney(t.subtotal),{bold:true});
     row('Spent',pdfMoney(-t.out)); row('Got back',pdfSigned(t.back));
-    row('Left to spend',pdfMoney(t.left),{bold:true,rule:true}); gap(6);
+    row('Left to spend'+(s.spendLeftTo?' to '+s.spendLeftTo:''),pdfMoney(t.left),{bold:true,rule:true}); gap(6);
     if(s.spending.length){ h2('Spending log');
       [...s.spending].sort((a,b)=>a.at-b.at).forEach(x=>row(stampFlat(x.at)+'   '+(x.note||(x.dir==='in'?'Money back':'Spent')),(x.dir==='in'?'+':'-')+fmt.format(x.amount),{size:9.5})); }
     gap(22);
@@ -873,6 +880,7 @@ async function startNewMonth(){
   const next={ accounts: state.accounts.map(a=>({...a})) };
   state.savings.forEach(x=>{ if(!x.skip) deposit(next,x.name,+x.monthly||0); });
   if(state.budgetedBills.length && state.leftoverTo) deposit(next,state.leftoverTo,t.leftover);
+  if(state.spendLeftTo) deposit(next,state.spendLeftTo,t.left);
   try{
     clearTimeout(saveTimer);
     await store.addArchive(rec);
@@ -881,7 +889,7 @@ async function startNewMonth(){
       budgetedBills: state.budgetedBills.map(x=>({...x,charges:[]})),
       savings: state.savings.map(s=>({...s, skip:false})),
       accounts: next.accounts,
-      leftoverTo: state.leftoverTo, spending: [], bigTx: state.bigTx };
+      leftoverTo: state.leftoverTo, spendLeftTo: state.spendLeftTo, spending: [], bigTx: state.bigTx };
     await store.saveCurrent();
     confirming=false; openBills.clear(); render(); setStatus(savedLine());
     toast(ymLabel(rec.month)+' saved to History');

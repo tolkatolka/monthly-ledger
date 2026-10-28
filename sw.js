@@ -1,5 +1,5 @@
 // Monthly Ledger offline support: keeps the app's own files on the phone so it opens with no connection.
-const VERSION = 'ledger-v1';
+const VERSION = 'ledger-v2';
 const APP = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
